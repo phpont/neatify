@@ -8,7 +8,7 @@ import parserHtml from "prettier/plugins/html";
 
 type MessageIn = {
   id: string;
-  type: "format" | "minify";
+  type: "format" | "minify" | "ping";
   code: string;
   options?: Record<string, any>;
 };
@@ -23,6 +23,10 @@ type MessageOut = {
 self.addEventListener("message", async (evt: MessageEvent<MessageIn>) => {
   const { id, type, code, options } = evt.data;
   try {
+    if (type === "ping") {
+      postMessage({ id, ok: true, result: "pong" } as MessageOut);
+      return;
+    }
     if (type === "format") {
       const formatted = await prettier.format(code, {
         parser: "html",

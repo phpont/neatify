@@ -16,7 +16,12 @@ import {
 } from "lucide-react";
 
 const Editor = dynamic(() => import("@monaco-editor/react"), { ssr: false }) as any;
+const DiffEditor = dynamic(
+  () => import("@monaco-editor/react").then((m) => m.DiffEditor),
+  { ssr: false }
+) as any;
 import { Tooltip } from "@/components/ui/Tooltip";
+import { createWorkerPool } from "@/lib/workerPool";
 
 type Preset = {
   id: string;
@@ -57,41 +62,7 @@ type WorkerMessage = {
   error?: string;
 };
 
-function useFormatterWorker() {
-  const workerRef = useRef<Worker | null>(null);
-
-  useEffect(() => {
-    const w = new Worker(
-      new URL("../workers/formatter.worker.ts", import.meta.url),
-      { type: "module" }
-    );
-    workerRef.current = w;
-    return () => {
-      w.terminate();
-      workerRef.current = null;
-    };
-  }, []);
-
-  return useCallback(async function run(
-    type: "format" | "minify",
-    code: string,
-    options: Record<string, any>
-  ): Promise<string> {
-    const worker = workerRef.current;
-    if (!worker) throw new Error("Worker not ready");
-    const id = Math.random().toString(36).slice(2);
-    return new Promise((resolve, reject) => {
-      const onMessage = (evt: MessageEvent<WorkerMessage>) => {
-        if (evt.data.id !== id) return;
-        worker.removeEventListener("message", onMessage);
-        if (evt.data.ok) resolve(evt.data.result || "");
-        else reject(new Error(evt.data.error || "Formatting failed"));
-      };
-      worker.addEventListener("message", onMessage);
-      worker.postMessage({ id, type, code, options });
-    });
-  }, []);
-}
+// single-worker helper removed in favor of a warm pool
 
 function useLocalStorage<T>(key: string, initial: T) {
   const [value, setValue] = useState<T>(() => {
@@ -112,9 +83,25 @@ function useLocalStorage<T>(key: string, initial: T) {
 }
 
 export function NeatifyApp() {
-  const formatWorker = useFormatterWorker();
+  const poolRef = useRef<ReturnType<typeof createWorkerPool> | null>(null);
+  const [warming, setWarming] = useState(true);
 
-  const [input, setInput] = useState<string>("<!-- Paste messy HTML here -->\n<div><span> Hello <b>world</b>!</span></div>");
+  const placeholders = useMemo(
+    () => [
+      "<!-- Paste messy HTML here -->\n<div><span> Hello <b>world</b>!</span></div>",
+      "<!-- Drop HTML. We’ll make it neat. -->\n<section><h1>Title</h1><p>  too   many   spaces </p></section>",
+      "<!-- Tip: Try Cmd/Ctrl+V to paste -->\n<ul><li>messy   <b>list</b></li><li>items</li></ul>",
+      "<!-- Secret power: Diff to compare changes -->\n<html><head><title> Neatify </title></head><body><div>   hi </div></body></html>",
+    ],
+    []
+  );
+  const [phIndex, setPhIndex] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setPhIndex((i) => (i + 1) % placeholders.length), 4500);
+    return () => clearInterval(t);
+  }, [placeholders.length]);
+
+  const [input, setInput] = useState<string>(placeholders[0]);
   const [output, setOutput] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
@@ -133,29 +120,68 @@ export function NeatifyApp() {
     return presets.find((p) => p.id === activePresetId) || DEFAULT_PRESET;
   }, [presets, activePresetId]);
 
+  const isHtmlLike = (code: string) => /<\w|<!DOCTYPE|<html|<body|<div/i.test(code);
+
+  const withSpinner = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    setBusy(true);
+    try {
+      return await fn();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toastRef = useRef<number | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const fireToast = (msg: string) => {
+    setToast(msg);
+    if (toastRef.current) window.clearTimeout(toastRef.current);
+    toastRef.current = window.setTimeout(() => setToast(null), 2000);
+  };
+
+  useEffect(() => {
+    const pool = createWorkerPool(2);
+    poolRef.current = pool;
+    pool.warmUp().then(() => setWarming(false));
+    return () => pool.dispose();
+  }, []);
+
   const runFormat = useCallback(async () => {
     setBusy(true);
     try {
-      const res = await formatWorker("format", input, activePreset.prettier);
+      const start = performance.now();
+      const res = await poolRef.current!.run("format", input, activePreset.prettier);
       setOutput(res);
+      const ms = Math.max(1, Math.round(performance.now() - start));
+      fireToast(`Formatted in ${ms}ms`);
+      if (!isHtmlLike(input)) fireToast("Tip: This doesn’t look like HTML.");
     } catch (e: any) {
       setOutput(`/* Error: ${e?.message || e} */\n` + input);
     } finally {
       setBusy(false);
     }
-  }, [formatWorker, input, activePreset]);
+  }, [input, activePreset]);
 
   const runMinify = useCallback(async () => {
     setBusy(true);
     try {
-      const res = await formatWorker("minify", input, activePreset.minify);
+      const start = performance.now();
+      const before = new Blob([input]).size;
+      const res = await poolRef.current!.run("minify", input, activePreset.minify);
+      const after = new Blob([res]).size;
       setOutput(res);
+      const ms = Math.max(1, Math.round(performance.now() - start));
+      const ratio = before ? Math.round(((before - after) / before) * 100) : 0;
+      fireToast(`Minified: ${formatKB(before)} → ${formatKB(after)} (${ratio > 0 ? "-" + ratio : ratio}%) in ${ms}ms`);
+      if (!isHtmlLike(input)) fireToast("Tip: This doesn’t look like HTML.");
     } catch (e: any) {
       setOutput(`/* Error: ${e?.message || e} */\n` + input);
     } finally {
       setBusy(false);
     }
-  }, [formatWorker, input, activePreset]);
+  }, [input, activePreset]);
+
+  const formatKB = (n: number) => `${(n / 1024).toFixed(2)}KB`;
 
   const handleCopy = useCallback(async () => {
     try {
@@ -288,7 +314,20 @@ export function NeatifyApp() {
 
             <div className="relative h-[62vh] rounded-2xl overflow-hidden">
               <div className="gradient-border p-[1.5px] rounded-2xl">
-                <div className="rounded-2xl border bg-card glass">
+                <div className="rounded-2xl border bg-card glass relative">
+                  {/* Rotating placeholder overlay */}
+                  {(!input || input.trim() === "") && (
+                    <motion.div
+                      key={phIndex}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 0.55 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="pointer-events-none absolute inset-0 p-4 text-sm text-muted-foreground"
+                    >
+                      <pre className="whitespace-pre-wrap select-none">{placeholders[phIndex]}</pre>
+                    </motion.div>
+                  )}
                   <Editor
                     height="62vh"
                     defaultLanguage="html"
@@ -303,6 +342,9 @@ export function NeatifyApp() {
                       smoothScrolling: true,
                     }}
                   />
+                  {warming && (
+                    <div className="absolute right-2 top-2 text-xs text-muted-foreground animate-pulse">Warming up…</div>
+                  )}
                 </div>
               </div>
           </div>
@@ -322,7 +364,9 @@ export function NeatifyApp() {
                 >
                   <div className="gradient-border p-[1.5px] rounded-2xl">
                     <div className="rounded-2xl border bg-card glass">
-                      <Editor.DiffEditor
+                      <CodeStory original={input} modified={output} />
+                      <DiffEditor
+                        height="62vh"
                         original={input}
                         modified={output}
                         language="html"
@@ -382,7 +426,7 @@ export function NeatifyApp() {
         }}
       />
 
-      {/* Copy toast */}
+      {/* Toasts */}
       <AnimatePresence>
         {copied && (
           <motion.div
@@ -393,6 +437,17 @@ export function NeatifyApp() {
             className="fixed bottom-4 right-4 z-50 rounded-xl border bg-background px-3 py-2 text-sm shadow-md"
           >
             Copied to clipboard
+          </motion.div>
+        )}
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-16 right-4 z-50 rounded-xl border bg-background px-3 py-2 text-sm shadow-md"
+          >
+            {toast}
           </motion.div>
         )}
       </AnimatePresence>
@@ -471,9 +526,7 @@ function Toolbar({
       </Btn>
 
       {busy && (
-        <div className="col-span-full text-xs text-muted-foreground mt-1">
-          Working…
-        </div>
+        <div className="col-span-full text-xs text-muted-foreground mt-1">Working…</div>
       )}
     </div>
   );
@@ -593,6 +646,56 @@ function OptionsPanel({
       {Fields}
     </div>
   );
+}
+
+function CodeStory({ original, modified }: { original: string; modified: string }) {
+  const stats = useMemo(() => summarizeDiff(original, modified), [original, modified]);
+  if (!stats) return null;
+  return (
+    <div className="absolute left-3 top-3 z-10 text-xs text-muted-foreground">
+      <div className="inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 backdrop-blur">
+        <span>+{stats.added} / -{stats.removed} lines</span>
+        <span>comments removed: {stats.commentsRemoved}</span>
+        <span>attributes normalized: {stats.attrNormalized}</span>
+      </div>
+    </div>
+  );
+}
+
+function summarizeDiff(a: string, b: string) {
+  const aLines = a.split(/\r?\n/);
+  const bLines = b.split(/\r?\n/);
+  const cap = 2000;
+  if (aLines.length + bLines.length > cap) {
+    return {
+      added: Math.max(0, bLines.length - aLines.length),
+      removed: Math.max(0, aLines.length - bLines.length),
+      commentsRemoved: Math.max(0, (a.match(/<!--/g) || []).length - (b.match(/<!--/g) || []).length),
+      attrNormalized: Math.max(0, (b.match(/\s\w+=/g) || []).length - (a.match(/\s\w+=/g) || []).length),
+    };
+  }
+  // Simple LCS line diff counts
+  const n = aLines.length, m = bLines.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = aLines[i] === bLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  let i = 0, j = 0, added = 0, removed = 0;
+  while (i < n && j < m) {
+    if (aLines[i] === bLines[j]) { i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { removed++; i++; }
+    else { added++; j++; }
+  }
+  removed += n - i;
+  added += m - j;
+  return {
+    added,
+    removed,
+    commentsRemoved: Math.max(0, (a.match(/<!--/g) || []).length - (b.match(/<!--/g) || []).length),
+    attrNormalized: Math.max(0, (b.match(/\s\w+=/g) || []).length - (a.match(/\s\w+=/g) || []).length),
+  };
 }
 
 function OptionsModal({

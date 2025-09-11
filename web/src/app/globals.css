@@ -80,6 +80,17 @@ body {
 /* Button elevations */
 .btn-elevate { box-shadow: 0 6px 16px rgba(0,0,0,0.15); }
 .btn-elevate:hover { box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+.btn-elevate:active { transform: translateY(1px) scale(0.99); }
+
+/* Focus ring */
+.ring-glow:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.35), 0 0 0 6px rgba(236,72,153,0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}
 
 /* Inputs styling */
 .ui-input,
