@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --accent: #f5f5f7;
+  --muted-foreground: #6b7280;
+  --card: #ffffff;
+  --border: rgba(0,0,0,0.08);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-code);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --accent: #111113;
+    --muted-foreground: #9ca3af;
+    --card: #0f0f10;
+    --border: rgba(255,255,255,0.12);
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+/* Decorative backgrounds */
+.bg-radial {
+  background-image: radial-gradient(1200px 600px at 10% -10%, rgba(99,102,241,0.18), transparent 60%),
+    radial-gradient(1000px 600px at 110% 10%, rgba(236,72,153,0.16), transparent 60%),
+    radial-gradient(800px 500px at 50% 120%, rgba(16,185,129,0.12), transparent 60%);
+}
+
+.bg-grid {
+  background-image: linear-gradient(var(--color-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
+  background-size: 24px 24px, 24px 24px;
+  background-position: center;
+}
+
+/* Subtle glass card */
+.glass {
+  background: linear-gradient(
+      to bottom right,
+      rgba(255,255,255,0.08),
+      rgba(255,255,255,0.02)
+    );
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Neutral modal surface: darker, less chroma than glass */
+.modal-surface {
+  background: color-mix(in oklab, var(--color-background) 92%, transparent);
+  border-color: var(--color-border);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Gradient stroke card wrapper */
+.gradient-border {
+  background: linear-gradient(135deg, rgba(99,102,241,0.6), rgba(236,72,153,0.6), rgba(16,185,129,0.6));
+}
+
+/* Button elevations */
+.btn-elevate { box-shadow: 0 6px 16px rgba(0,0,0,0.15); }
+.btn-elevate:hover { box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+
+/* Inputs styling */
+.ui-input,
+.ui-select {
+  background: color-mix(in oklab, var(--color-background) 85%, transparent);
+  border: 1px solid var(--color-border);
+  color: var(--color-foreground);
+}
+
+/* Custom checkbox */
+input[type="checkbox"].ui-checkbox {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--color-border);
+  background: color-mix(in oklab, var(--color-background) 80%, transparent);
+  display: inline-grid;
+  place-content: center;
+  transition: background 120ms, border-color 120ms, box-shadow 120ms;
+}
+input[type="checkbox"].ui-checkbox:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.35);
+}
+input[type="checkbox"].ui-checkbox:checked {
+  border-color: transparent;
+  background: linear-gradient(135deg, #6366f1, #ec4899, #f59e0b);
+}
+input[type="checkbox"].ui-checkbox:checked::after {
+  content: "";
+  width: 0.6rem;
+  height: 0.6rem;
+  mask: linear-gradient(#fff 0 0);
+  background: white;
+  clip-path: polygon(14% 44%, 0 58%, 43% 100%, 100% 26%, 85% 12%, 43% 70%);
+}
+
+/* Scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148,163,184,0.45) transparent;
+}
+*::-webkit-scrollbar { height: 10px; width: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(99,102,241,0.5), rgba(236,72,153,0.5));
+  border-radius: 10px;
+  border: 2px solid transparent;
+}
+*::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(99,102,241,0.7), rgba(236,72,153,0.7)); }
