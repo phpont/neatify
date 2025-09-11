@@ -22,6 +22,11 @@ const DiffEditor = dynamic(
 ) as any;
 import { Tooltip } from "@/components/ui/Tooltip";
 import { createWorkerPool } from "@/lib/workerPool";
+import JSONYAMLTool from "@/components/tools/JSONYAMLTool";
+import RegexTool from "@/components/tools/RegexTool";
+import TailwindSorterTool from "@/components/tools/TailwindSorterTool";
+import ColorTool from "@/components/tools/ColorTool";
+import PreviewTool from "@/components/tools/PreviewTool";
 
 type Preset = {
   id: string;
@@ -107,6 +112,9 @@ export function NeatifyApp() {
   const [showDiff, setShowDiff] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+  const [showSave, setShowSave] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Preset | null>(null);
+  const [tool, setTool] = useState<"html" | "json" | "regex" | "tailwind" | "colors" | "preview">("html");
   const [presets, setPresets] = useLocalStorage<Preset[]>(
     "neatify.presets.v1",
     [DEFAULT_PRESET]
@@ -203,25 +211,49 @@ export function NeatifyApp() {
     URL.revokeObjectURL(url);
   }, [output]);
 
-  const savePreset = useCallback(() => {
-    const name = prompt("Preset name");
-    if (!name) return;
-    const id = name.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now().toString(36);
-    const preset: Preset = {
-      id,
-      name,
-      prettier: { ...activePreset.prettier },
-      minify: { ...activePreset.minify },
-    };
-    setPresets((prev) => [...prev, preset]);
-    setActivePresetId(id);
-  }, [activePreset, setPresets, setActivePresetId]);
+  const savePreset = useCallback(
+    (name: string, overwrite = false) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      if (trimmed.toLowerCase() === DEFAULT_PRESET.name.toLowerCase()) return;
+      // check existing by case-insensitive name
+      const existing = presets.find(
+        (p) => p.name.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (existing && !overwrite) return; // guarded in modal
+
+      if (existing && overwrite) {
+        const updated: Preset = {
+          ...existing,
+          prettier: { ...activePreset.prettier },
+          minify: { ...activePreset.minify },
+        };
+        setPresets((prev) => prev.map((p) => (p.id === existing.id ? updated : p)));
+        setActivePresetId(existing.id);
+        fireToast(`Preset "${trimmed}" overwritten`);
+        return;
+      }
+
+      const id =
+        trimmed.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now().toString(36);
+      const preset: Preset = {
+        id,
+        name: trimmed,
+        prettier: { ...activePreset.prettier },
+        minify: { ...activePreset.minify },
+      };
+      setPresets((prev) => [...prev, preset]);
+      setActivePresetId(id);
+      fireToast(`Preset "${trimmed}" saved`);
+    },
+    [activePreset, presets, setPresets, setActivePresetId]
+  );
 
   const deletePreset = useCallback(
     (id: string) => {
-      if (!confirm("Delete this preset?")) return;
       setPresets((prev) => prev.filter((p) => p.id !== id));
       if (activePresetId === id) setActivePresetId(DEFAULT_PRESET.id);
+      fireToast("Preset deleted");
     },
     [activePresetId, setPresets, setActivePresetId]
   );
@@ -276,7 +308,7 @@ export function NeatifyApp() {
                 </select>
               </div>
               <button
-                onClick={savePreset}
+                onClick={() => setShowSave(true)}
                 className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm hover:bg-accent transition-colors"
                 title="Save preset"
               >
@@ -284,7 +316,7 @@ export function NeatifyApp() {
               </button>
               {activePresetId !== DEFAULT_PRESET.id && (
                 <button
-                  onClick={() => deletePreset(activePresetId)}
+                  onClick={() => setDeleteTarget(activePreset)}
                   className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm hover:bg-red-500/10 hover:text-red-600 transition-colors"
                   title="Delete preset"
                 >
@@ -295,6 +327,27 @@ export function NeatifyApp() {
           </motion.div>
         </header>
 
+        {/* Tool tabs */}
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {[
+            ["html", "HTML"],
+            ["json", "JSON/YAML"],
+            ["regex", "Regex"],
+            ["tailwind", "Tailwind Sort"],
+            ["colors", "Colors"],
+            ["preview", "Preview"],
+          ].map(([key, label]) => (
+            <button
+              key={key as string}
+              onClick={() => setTool(key as any)}
+              className={`rounded-full border px-3 py-1.5 text-sm ${tool === (key as any) ? "bg-gradient-to-br from-indigo-600 via-fuchsia-600 to-amber-500 text-white border-transparent" : "hover:bg-accent"}`}
+            >
+              {label as string}
+            </button>
+          ))}
+        </div>
+
+        {tool === "html" && (
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
           {/* Toolbar spanning both columns for alignment */}
           <div className="lg:col-span-2">
@@ -412,6 +465,23 @@ export function NeatifyApp() {
             </AnimatePresence>
           </div>
         </section>
+        )}
+
+        {tool === "json" && (
+          <JSONYAMLTool />
+        )}
+        {tool === "regex" && (
+          <RegexTool />
+        )}
+        {tool === "tailwind" && (
+          <TailwindSorterTool />
+        )}
+        {tool === "colors" && (
+          <ColorTool />
+        )}
+        {tool === "preview" && (
+          <PreviewTool />
+        )}
         {/* mobile controls removed for now */}
       </div>
 
@@ -423,6 +493,27 @@ export function NeatifyApp() {
         onSave={(p) => {
           setPresets((prev) => prev.map((it) => (it.id === activePreset.id ? p : it)));
           setShowOptions(false);
+        }}
+      />
+
+      {/* Save Preset Modal */}
+      <SavePresetModal
+        open={showSave}
+        onClose={() => setShowSave(false)}
+        existingNames={presets.map((p) => p.name)}
+        onSave={(name, overwrite) => {
+          savePreset(name, overwrite);
+          setShowSave(false);
+        }}
+      />
+
+      <DeletePresetModal
+        open={!!deleteTarget}
+        preset={deleteTarget || undefined}
+        onClose={() => setDeleteTarget(null)}
+        onDelete={(id) => {
+          deletePreset(id);
+          setDeleteTarget(null);
         }}
       />
 
@@ -758,6 +849,180 @@ function OptionsModal({
                   </div>
                 </div>
               </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function DeletePresetModal({
+  open,
+  preset,
+  onClose,
+  onDelete,
+}: {
+  open: boolean;
+  preset?: Preset;
+  onClose: () => void;
+  onDelete: (id: string) => void;
+}) {
+  const [confirm, setConfirm] = useState("");
+  const name = preset?.name || "";
+  const disabled = confirm.trim() !== name;
+  if (!open || !preset) return null;
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+          <motion.div
+            initial={{ scale: 0.98, y: 8, opacity: 0 }}
+            animate={{ scale: 1, y: 0, opacity: 1 }}
+            exit={{ scale: 0.98, y: 8, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="relative w-full max-w-sm"
+          >
+            <div className="rounded-2xl border modal-surface shadow-xl">
+              <div className="p-4">
+                <h3 className="text-sm font-semibold mb-2">Delete preset</h3>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Type <span className="font-mono font-semibold">{name}</span> to confirm deletion.
+                </p>
+                <input
+                  autoFocus
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !disabled) onDelete(preset.id);
+                  }}
+                  placeholder={name}
+                  className="ui-input w-full rounded-lg px-3 py-2 text-sm ring-glow"
+                />
+                <div className="mt-3 flex justify-end gap-2">
+                  <button className="rounded-xl border px-3 py-2 text-sm hover:bg-accent" onClick={onClose}>
+                    Cancel
+                  </button>
+                  <button
+                    className="rounded-xl px-3 py-2 text-sm text-white bg-gradient-to-br from-red-600 to-pink-600 disabled:opacity-60"
+                    disabled={disabled}
+                    onClick={() => onDelete(preset.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function SavePresetModal({
+  open,
+  onClose,
+  onSave,
+  existingNames,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (name: string, overwrite: boolean) => void;
+  existingNames: string[];
+}) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const exists = useMemo(
+    () => existingNames.some((n) => n.toLowerCase() === name.trim().toLowerCase()),
+    [existingNames, name]
+  );
+
+  useEffect(() => {
+    if (open) setName("");
+  }, [open]);
+
+  useEffect(() => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Please enter a name");
+    } else if (trimmed.length < 2 || trimmed.length > 40) {
+      setError("Name must be 2–40 characters");
+    } else if (!/^[\w\- ]+$/.test(trimmed)) {
+      setError("Only letters, numbers, spaces, - and _");
+    } else if (trimmed.toLowerCase() === "default") {
+      setError("'Default' is reserved");
+    } else if (exists) {
+      setError("A preset with this name exists");
+    } else {
+      setError(null);
+    }
+  }, [name, exists]);
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+          <motion.div
+            initial={{ scale: 0.98, y: 8, opacity: 0 }}
+            animate={{ scale: 1, y: 0, opacity: 1 }}
+            exit={{ scale: 0.98, y: 8, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="relative w-full max-w-sm"
+          >
+            <div className="rounded-2xl border modal-surface shadow-xl">
+              <div className="p-4">
+                <h3 className="text-sm font-semibold mb-2">Save preset</h3>
+                <input
+                  autoFocus
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !error && !exists) onSave(name, false);
+                  }}
+                  placeholder="e.g. Compact 80"
+                  className="ui-input w-full rounded-lg px-3 py-2 text-sm ring-glow"
+                />
+                {error && (
+                  <div className="mt-2 text-xs text-red-400">{error}</div>
+                )}
+                {exists && !error && (
+                  <div className="mt-2 text-xs text-amber-400">This name exists. You can overwrite it.</div>
+                )}
+                <div className="mt-3 flex justify-end gap-2">
+                  <button className="rounded-xl border px-3 py-2 text-sm hover:bg-accent" onClick={onClose}>
+                    Cancel
+                  </button>
+                  {!exists && (
+                    <button
+                      className="rounded-xl px-3 py-2 text-sm text-white bg-gradient-to-br from-indigo-600 via-fuchsia-600 to-amber-500 disabled:opacity-60"
+                      disabled={Boolean(error)}
+                      onClick={() => onSave(name, false)}
+                    >
+                      Save
+                    </button>
+                  )}
+                  {exists && (
+                    <button
+                      className="rounded-xl px-3 py-2 text-sm text-white bg-gradient-to-br from-indigo-600 via-fuchsia-600 to-amber-500"
+                      onClick={() => onSave(name, true)}
+                    >
+                      Overwrite
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </motion.div>
         </motion.div>
       )}

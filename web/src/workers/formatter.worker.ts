@@ -3,6 +3,9 @@
 
 import prettier from "prettier/standalone";
 import parserHtml from "prettier/plugins/html";
+import pluginBabel from "prettier/plugins/babel";
+import pluginEstree from "prettier/plugins/estree";
+import pluginYaml from "prettier/plugins/yaml";
 
 // We lazy-load html-minifier-terser only when needed via dynamic import
 
@@ -29,8 +32,8 @@ self.addEventListener("message", async (evt: MessageEvent<MessageIn>) => {
     }
     if (type === "format") {
       const formatted = await prettier.format(code, {
-        parser: "html",
-        plugins: [parserHtml],
+        parser: (options && (options as any).parser) || "html",
+        plugins: [parserHtml, pluginBabel, pluginEstree, pluginYaml],
         ...(options || {}),
       });
       postMessage({ id, ok: true, result: formatted } as MessageOut);
