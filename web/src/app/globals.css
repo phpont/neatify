@@ -1,5 +1,5 @@
 @import "tailwindcss";
-
+/* variaveis */
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -39,7 +39,6 @@ body {
     "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
 }
 
-/* Decorative backgrounds */
 .bg-radial {
   background-image: radial-gradient(1200px 600px at 10% -10%, rgba(99,102,241,0.18), transparent 60%),
     radial-gradient(1000px 600px at 110% 10%, rgba(236,72,153,0.16), transparent 60%),
@@ -53,7 +52,6 @@ body {
   background-position: center;
 }
 
-/* Subtle glass card */
 .glass {
   background: linear-gradient(
       to bottom right,
@@ -64,7 +62,6 @@ body {
   -webkit-backdrop-filter: blur(8px);
 }
 
-/* Neutral modal surface: darker, less chroma than glass */
 .modal-surface {
   background: color-mix(in oklab, var(--color-background) 92%, transparent);
   border-color: var(--color-border);
@@ -72,17 +69,15 @@ body {
   -webkit-backdrop-filter: blur(10px);
 }
 
-/* Gradient stroke card wrapper */
 .gradient-border {
   background: linear-gradient(135deg, rgba(99,102,241,0.6), rgba(236,72,153,0.6), rgba(16,185,129,0.6));
 }
 
-/* Button elevations */
 .btn-elevate { box-shadow: 0 6px 16px rgba(0,0,0,0.15); }
 .btn-elevate:hover { box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
 .btn-elevate:active { transform: translateY(1px) scale(0.99); }
 
-/* Focus ring */
+
 .ring-glow:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(99,102,241,0.35), 0 0 0 6px rgba(236,72,153,0.25);
@@ -92,7 +87,6 @@ body {
   * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 }
 
-/* Inputs styling */
 .ui-input,
 .ui-select {
   background: color-mix(in oklab, var(--color-background) 85%, transparent);
@@ -100,7 +94,6 @@ body {
   color: var(--color-foreground);
 }
 
-/* Custom checkbox */
 input[type="checkbox"].ui-checkbox {
   appearance: none;
   width: 1rem;
@@ -129,7 +122,6 @@ input[type="checkbox"].ui-checkbox:checked::after {
   clip-path: polygon(14% 44%, 0 58%, 43% 100%, 100% 26%, 85% 12%, 43% 70%);
 }
 
-/* Scrollbar styling */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(148,163,184,0.45) transparent;
@@ -143,7 +135,7 @@ input[type="checkbox"].ui-checkbox:checked::after {
 }
 *::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(99,102,241,0.7), rgba(236,72,153,0.7)); }
 
-/* Monaco regex highlight */
+
 .regex-highlight {
   background: rgba(236, 72, 153, 0.25);
   border-bottom: 1px solid rgba(236, 72, 153, 0.6);
